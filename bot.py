@@ -315,7 +315,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- MAIN ---
 def main():
-    TOKEN = "8424466730:AAFs-ammvoxuUsJrXgqDGzBEgxNw8TAyt1Y"
+    TOKEN = "8514208968:AAF4qE-q9cn6iSnxNa_QkOab-SQQEcBlL7o"
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
