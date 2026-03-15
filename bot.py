@@ -324,7 +324,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Bot thread ---
 def run_bot():
-    TOKEN = "YOUR_BOT_TOKEN_HERE"  # 👈 Apna token yahan daalo
+    TOKEN = "8514208968:AAF4qE-q9cn6iSnxNa_QkOab-SQQEcBlL7o"  # 👈 Apna token yahan daalo
 
     async def _run():
         app = Application.builder().token(TOKEN).build()
