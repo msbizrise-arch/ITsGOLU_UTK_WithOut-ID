@@ -1,13 +1,17 @@
-# bot.py
+# bot.py — Fixed by Smarty MS (@SmartBoy_ApnaMS)
+# Web Service version with Flask for Render.com
+
 import os
 import logging
 import time
 import json
 import requests
+import threading
 from base64 import b64decode, b64encode
 import base64
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad, pad
+from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -17,7 +21,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- CONFIG (from utkarsh_without_id.txt) ---
+# --- Flask App (Render ke liye port binding) ---
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return '✅ Bot is running!', 200
+
+@flask_app.route('/health')
+def health():
+    return '✅ OK', 200
+
+# --- CONFIG ---
 API_URL = "https://application.utkarshapp.com/index.php/data_model"
 COMMON_KEY = b"%!^F&^$)&^$&*$^&"
 COMMON_IV = b"#*v$JvywJvyJDyvJ"
@@ -39,7 +54,7 @@ tiles_data_url = 'https://online.utkarsh.com/web/Course/tiles_data'
 layer_two_data_url = 'https://online.utkarsh.com/web/Course/get_layer_two_data'
 meta_source_url = '/meta_distributer/on_request_meta_source'
 
-# --- Helpers (exact from your file) ---
+# --- Helpers ---
 def encrypt(data, use_common_key, key, iv):
     cipher_key, cipher_iv = (COMMON_KEY, COMMON_IV) if use_common_key else (key, iv)
     cipher = AES.new(cipher_key, AES.MODE_CBC, cipher_iv)
@@ -119,8 +134,9 @@ def encrypt_stream(plain_text):
 # --- Telegram State ---
 user_sessions = {}
 
-# --- Core Logic (exact from utkarsh_without_id.txt) ---
+# --- Core Logic ---
 import asyncio
+
 async def extract_courses(mobile, password, batch_id):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _extract_sync, mobile, password, batch_id)
@@ -128,13 +144,11 @@ async def extract_courses(mobile, password, batch_id):
 def _extract_sync(mobile, password, batch_id):
     session = requests.Session()
     try:
-        # 1. CSRF
         r1 = session.get(base_url)
         csrf_token = r1.cookies.get('csrf_name')
         if not csrf_token:
             return [], "❌ CSRF token missing."
 
-        # 2. Login
         d1 = {
             'csrf_name': csrf_token,
             'mobile': mobile,
@@ -161,7 +175,6 @@ def _extract_sync(mobile, password, batch_id):
         h["jwt"] = jwt
         HEADERS["jwt"] = jwt
 
-        # 3. Profile
         profile = post_request("/users/get_my_profile", use_common_key=True)
         user_id = profile.get("data", {}).get("id")
         if not user_id:
@@ -170,7 +183,6 @@ def _extract_sync(mobile, password, batch_id):
         key = "".join(key_chars[int(i)] for i in (user_id + "1524567456436545")[:16]).encode()
         iv = "".join(iv_chars[int(i)] for i in (user_id + "1524567456436545")[:16]).encode()
 
-        # 4. Course
         d3 = {"course_id": batch_id, "revert_api": "1#0#0#1", "parent_id": 0, "tile_id": "15330", "layer": 1, "type": "course_combo"}
         de1 = encrypt_stream(json.dumps(d3))
         d4 = {'tile_input': de1, 'csrf_name': csrf_token}
@@ -179,7 +191,6 @@ def _extract_sync(mobile, password, batch_id):
         dr3 = decrypt_and_load_json(r4)
         data = dr3.get("data", [])
 
-        # 5. Generate .txt files
         files = []
         for i in data:
             try:
@@ -245,13 +256,11 @@ def _extract_sync(mobile, password, batch_id):
                                         vu = qo[0].get("url", "")
                                     if not vu:
                                         vu = first.get("link", "")
-
                                 if vu:
                                     pu = vu.split("?Expires=")[0] if "?Expires=" in vu else vu
                                     if not pu.startswith("http"):
                                         pu = f"https://www.youtube.com/embed/{pu}"
-                                    line = f"{jt}: {pu}\n"
-                                    f.write(line)
+                                    f.write(f"{jt}: {pu}\n")
                 files.append(fn)
                 time.sleep(0.2)
             except Exception as e:
@@ -262,10 +271,10 @@ def _extract_sync(mobile, password, batch_id):
         logger.exception("Fatal error")
         return [], f"💥 {str(e)[:150]}"
 
-# --- Telegram ---
+# --- Telegram Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📱 Send: `mobile*password`\n🔖 Then: Batch ID\n\nExample:\n`91234567890*mypass`\n`12345`",
+        "📱 Send: mobile*password\n🔖 Then: Batch ID\n\nExample:\n91234567890*mypass\n12345",
         parse_mode=None
     )
 
@@ -276,14 +285,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if '*' in text and len(text.split('*')) == 2:
         mobile, pwd = text.split('*', 1)
         if not (mobile.isdigit() and len(mobile) >= 10):
-            await update.message.reply_text("⚠️ Use: `mobile*password`", parse_mode=None)
+            await update.message.reply_text("⚠️ Use: mobile*password", parse_mode=None)
             return
         user_sessions[uid] = {"mobile": mobile, "password": pwd}
-        await update.message.reply_text(f"✅ Login saved. Send Batch ID.", parse_mode=None)
+        await update.message.reply_text("✅ Login saved. Send Batch ID.", parse_mode=None)
         return
 
     if uid not in user_sessions:
-        await update.message.reply_text("🔒 First send `mobile*password`", parse_mode=None)
+        await update.message.reply_text("🔒 First send mobile*password", parse_mode=None)
         return
 
     if not text.isdigit():
@@ -291,7 +300,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     batch_id = text
-    await update.message.reply_text("⏳ Extracting... (30–60 sec)", parse_mode=None)
+    await update.message.reply_text("⏳ Extracting... (30-60 sec)", parse_mode=None)
 
     creds = user_sessions[uid]
     files, err = await extract_courses(creds["mobile"], creds["password"], batch_id)
@@ -309,18 +318,31 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_document(document=f, filename=fn)
             os.remove(fn)
         except Exception as e:
-            logger.error(f"Send fail: {fn} – {e}")
+            logger.error(f"Send fail: {fn} - {e}")
 
-    await update.message.reply_text("✅ All `.txt` files sent!", parse_mode=None)
+    await update.message.reply_text("✅ All .txt files sent!", parse_mode=None)
+
+# --- Bot thread ---
+def run_bot():
+    TOKEN = "YOUR_BOT_TOKEN_HERE"  # 👈 Apna token yahan daalo
+
+    async def _run():
+        app = Application.builder().token(TOKEN).build()
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+        logger.info("✅ Bot running...")
+        await app.run_polling(drop_pending_updates=True)
+
+    asyncio.run(_run())
 
 # --- MAIN ---
-def main():
-    TOKEN = "8514208968:AAF4qE-q9cn6iSnxNa_QkOab-SQQEcBlL7o"
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    logger.info("✅ Bot running...")
-    app.run_polling(drop_pending_updates=True)
-
 if __name__ == "__main__":
-    main()
+    # Bot ko alag thread mein chalao
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    logger.info("✅ Bot thread started.")
+
+    # Flask server Render ke liye port pe listen karega
+    PORT = int(os.environ.get("PORT", 10000))
+    logger.info(f"✅ Flask starting on port {PORT}")
+    flask_app.run(host="0.0.0.0", port=PORT)
